@@ -1,0 +1,13 @@
+authenticate:
+    enable: false
+    accounts:
+    -
+        username: admin
+        password: passwd
+    -
+        username: user
+        password: 123456
+
+server:
+    port: 9999
+    publishTimeout: 10000
