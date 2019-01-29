@@ -29,6 +29,8 @@ import io.github.laplacedemon.qthings.mqtt.topic.Subscriber;
 import io.github.laplacedemon.qthings.mqtt.topic.TopicMessage;
 import io.github.laplacedemon.qthings.mqtt.topic.WillMessage;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 
@@ -79,7 +81,13 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 				if (!authSuccess) {
 					ConnAckPacket connAckPacket = new ConnAckPacket();
 					connAckPacket.setConnectReturnCode(ConnectAckType.Unauthorized.getReturnCode());
-					ctx.writeAndFlush(connAckPacket);
+					ctx.writeAndFlush(connAckPacket).addListener(new ChannelFutureListener() {
+						
+						@Override
+						public void operationComplete(ChannelFuture future) throws Exception {
+							ChannelUtil.closeChannel(ctx.channel());
+						}
+					});
 					break;
 				}
 			}
