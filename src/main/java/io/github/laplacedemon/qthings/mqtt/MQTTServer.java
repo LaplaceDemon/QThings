@@ -1,14 +1,11 @@
 package io.github.laplacedemon.qthings.mqtt;
 
-import java.io.FileReader;
 import java.io.IOException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.esotericsoftware.yamlbeans.YamlReader;
-
-import io.github.laplacedemon.qthings.mqtt.etc.Options;
+import io.github.laplacedemon.qthings.mqtt.etc.ConfigInstance;
 import io.github.laplacedemon.qthings.mqtt.handler.ClientIdSessionMapper;
 import io.github.laplacedemon.qthings.mqtt.handler.MQTTDecoder;
 import io.github.laplacedemon.qthings.mqtt.handler.MQTTEncoder;
@@ -29,8 +26,7 @@ public class MQTTServer {
 	private final static Logger LOGGER = LoggerFactory.getLogger(MQTTServer.class);
 	
 	public static void main(String[] args) throws InterruptedException, IOException {
-		YamlReader yamlReader = new YamlReader(new FileReader("etc/qthings.yml"));
-		Options options = yamlReader.read(Options.class);
+		ConfigInstance.loadConfig();
 		
 		final EventLoopGroup bossGroup = new NioEventLoopGroup(1);
 		final EventLoopGroup workGroup = new NioEventLoopGroup();
@@ -54,7 +50,7 @@ public class MQTTServer {
 					}
 				});
 
-			int port = options.getServer().getPort();
+			int port = ConfigInstance.INS.getServer().getPort();
 			ChannelFuture f = bootstrap.bind(port).addListener(new ChannelFutureListener() {
 
 				@Override

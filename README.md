@@ -3,14 +3,15 @@
 Features：
 
 - Unique client Id ✔
-- QoS = 0 ✔
-- QoS = 1 ✔
-- QoS = 2
-- Retina Message ✔
+- Clean session
+- Authenticate  ✔
 - Keep alive  ✔
+- QoS = 0  ✔
+- QoS = 1  ✔
+- QoS = 2
+- Retina Message  ✔
 - Will Message 
 - Topic filter support '#'
 - Topic filter support '!'
-- Authenticate 
 - SSL/TLS
 

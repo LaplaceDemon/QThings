@@ -2,7 +2,7 @@ package io.github.laplacedemon.qthings.mqtt.etc;
 
 import java.util.List;
 
-public class Options {
+public class Config {
 	public static class Authenticate {
 		public static class Account {
 			private String username;
@@ -25,7 +25,7 @@ public class Options {
 			}
 
 		}
-
+		
 		private boolean enable;
 		private List<Account> accounts;
 

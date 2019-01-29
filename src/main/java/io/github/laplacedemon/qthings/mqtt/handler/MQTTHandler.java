@@ -8,6 +8,9 @@ import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.laplacedemon.qthings.mqtt.etc.Config.Authenticate.Account;
+import io.github.laplacedemon.qthings.mqtt.etc.ConfigInstance;
+import io.github.laplacedemon.qthings.mqtt.protocal.common.ConnectAckType;
 import io.github.laplacedemon.qthings.mqtt.protocal.common.ControlPacketType;
 import io.github.laplacedemon.qthings.mqtt.protocal.common.QoS;
 import io.github.laplacedemon.qthings.mqtt.protocal.packet.ConnAckPacket;
@@ -58,9 +61,39 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 			}
 			ConnectPacket connectPacket = (ConnectPacket)mqttPacket;
 			
+			// authenticate
+			if(ConfigInstance.INS.getAuthenticate().isEnable()) {
+				String username = connectPacket.getUsername();
+				String password = connectPacket.getPassword();
+				
+				List<Account> accounts = ConfigInstance.INS.getAuthenticate().getAccounts();
+				
+				boolean authSuccess = false;
+				for(Account account :accounts) {
+					if (account.getUsername().equals(username) && account.getPassword().equals(password)) {
+						authSuccess = true;
+						break;
+					}
+				}
+				
+				if (!authSuccess) {
+					ConnAckPacket connAckPacket = new ConnAckPacket();
+					connAckPacket.setConnectReturnCode(ConnectAckType.Unauthorized.getReturnCode());
+					ctx.writeAndFlush(connAckPacket);
+					break;
+				}
+			}
+			
 			// clientId
 			String clientIdentifier = connectPacket.getClientIdentifier();
-			if(clientIdentifier != null) {
+			if(clientIdentifier != null && clientIdentifier.length() > 0) {
+				if(clientIdentifier.length() > 23) {
+					ConnAckPacket connAckPacket = new ConnAckPacket();
+					connAckPacket.setConnectReturnCode(ConnectAckType.UnqualifiedClientIdentifier.getReturnCode());
+					ctx.writeAndFlush(connAckPacket);
+					break;
+				}
+				
 				clientIdentifier = ("#" + clientIdentifier);
 			} else {
 				Channel channel = ctx.channel();

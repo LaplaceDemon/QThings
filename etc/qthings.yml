@@ -1,5 +1,5 @@
 authenticate:
-    enable: false
+    enable: true
     accounts:
     -
         username: admin
