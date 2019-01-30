@@ -2,6 +2,7 @@ package io.github.laplacedemon.qthings.mqtt.topic;
 
 import io.github.laplacedemon.qthings.mqtt.handler.ChannelUtil;
 import io.netty.channel.Channel;
+import io.netty.util.Attribute;
 
 public class Session {
 	private Channel channel;
@@ -15,6 +16,9 @@ public class Session {
 		if(willFlag) {
 			this.willMessage = willMessage;
 		}
+		
+		Attribute<Session> attribute = this.channel.attr(ChannelUtil.SESSION_CHANNEL_KEY);
+		attribute.set(this);
 	}
 
 	public Channel getChannel() {

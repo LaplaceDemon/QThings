@@ -10,7 +10,7 @@ Features：
 - QoS = 1  ✔
 - QoS = 2
 - Retina Message  ✔
-- Will Message 
+- Will Message  ✔
 - Topic filter support '#'
 - Topic filter support '!'
 - SSL/TLS

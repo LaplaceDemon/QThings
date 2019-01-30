@@ -21,19 +21,25 @@ public class ChannelUtil {
 		return subscriberOnChannel(ctx.channel());
 	}
 	
+	public static Session sessuibOnChannel(Channel channel) {
+		Attribute<Session> attr = channel.attr(SESSION_CHANNEL_KEY);
+		Session session = attr.get();
+		return session;
+	}
+	
 	public static Subscriber subscriberOnChannel(Channel channel) {
 		Attribute<Subscriber> attr = channel.attr(SUBSCRIBER_CHANNEL_KEY);
 		Subscriber subscriber = attr.get();
 		return subscriber;
 	}
 	
-	public static void closeChannel(Channel channel) {
+	public static ChannelFuture closeChannel(Channel channel) {
 		Subscriber subscriber = subscriberOnChannel(channel);
 		if(subscriber != null) {
 			subscriber.remove();
 		}
 		
-		channel.close().addListener(new ChannelFutureListener() {
+		ChannelFuture channelFuture = channel.close().addListener(new ChannelFutureListener() {
 			
 			@Override
 			public void operationComplete(ChannelFuture future) throws Exception {
@@ -42,9 +48,11 @@ public class ChannelUtil {
 			
 		});
 		
+		return channelFuture;
+		
 	}
 	
-	public static void closeChannelHandlerContext(ChannelHandlerContext ctx) {
-		closeChannel(ctx.channel());
+	public static ChannelFuture closeChannelHandlerContext(ChannelHandlerContext ctx) {
+		return closeChannel(ctx.channel());
 	}
 }

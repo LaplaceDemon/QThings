@@ -47,13 +47,28 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 	}
 
 	@Override
-	public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+	public void exceptionCaught(final ChannelHandlerContext ctx, final Throwable cause) throws Exception {
 		LOGGER.error("", cause);
-		ChannelUtil.closeChannelHandlerContext(ctx);
+		ChannelUtil.closeChannelHandlerContext(ctx).addListener(new ChannelFutureListener() {
+			
+			@Override
+			public void operationComplete(ChannelFuture future) throws Exception {
+				Session session = ChannelUtil.sessuibOnChannel(ctx.channel());
+				if(session.isWillFlag()) {
+					WillMessage willMessage = session.getWillMessage();
+					PublishPacket publishPacket = new PublishPacket();
+					publishPacket.setTopicName(willMessage.getTopic());
+					publishPacket.setRetain(willMessage.isRetain());
+					publishPacket.setPayload(willMessage.getPayload());
+					publishPacket.setQos(willMessage.getQos());
+					publish(publishPacket);
+				}
+			}
+		});
 	}
 
 	@Override
-	public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+	public void channelRead(final ChannelHandlerContext ctx,final Object msg) throws Exception {
 		MQTTPacket mqttPacket = (MQTTPacket)msg;
 		ControlPacketType type = mqttPacket.getType();
 		switch (type) {
@@ -152,7 +167,9 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 				LOGGER.debug("publish");
 			}
 			PublishPacket publishPacket = (PublishPacket)mqttPacket;
-			System.out.println(publishPacket);
+			if(LOGGER.isDebugEnabled()) {
+				LOGGER.debug(publishPacket.toString());
+			}
 			
 			if(publishPacket.isRetain()) {
 				// 存储消息
@@ -170,23 +187,7 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 				ctx.writeAndFlush(pubAckPacket);
 			}
 			
-			ConcurrentSkipListSet<Subscriber> subscriberSet = topicTreeManager.publish(publishPacket.getTopicName());
-			if(subscriberSet == null) {
-				break ;
-			}
-			
-			if(LOGGER.isDebugEnabled()) {
-				LOGGER.debug("subscriber size:{}", subscriberSet.size());
-			}
-			
-			for(Subscriber subscriber : subscriberSet) {
-				if(subscriber.isActive()) {
-					subscriber.publish((PublishPacket)publishPacket.clone());
-				} else {
-					subscriber.remove();
-				}
-			}
-			
+			publish((PublishPacket)publishPacket.clone());
 			break;
 		}
 		case PUBACK : {
@@ -258,6 +259,25 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 		}
 		default:
 			break;
+		}
+	}
+	
+	private void publish(PublishPacket publishPacket) {
+		ConcurrentSkipListSet<Subscriber> subscriberSet = topicTreeManager.publish(publishPacket.getTopicName());
+		if(subscriberSet == null) {
+			return ;
+		}
+		
+		if(LOGGER.isDebugEnabled()) {
+			LOGGER.debug("subscriber size:{}", subscriberSet.size());
+		}
+		
+		for(Subscriber subscriber : subscriberSet) {
+			if(subscriber.isActive()) {
+				subscriber.publish(publishPacket);
+			} else {
+				subscriber.remove();
+			}
 		}
 	}
 	
