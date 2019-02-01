@@ -49,6 +49,7 @@ public class Config {
 	public static class Server {
 		private int port;
 		private int publishTimeout;
+		private String dataPath;
 		
 		public int getPublishTimeout() {
 			return publishTimeout;
@@ -66,6 +67,14 @@ public class Config {
 			this.port = port;
 		}
 
+		public String getDataPath() {
+			return dataPath;
+		}
+
+		public void setDataPath(String dataPath) {
+			this.dataPath = dataPath;
+		}
+		
 	}
 
 	private Authenticate authenticate;

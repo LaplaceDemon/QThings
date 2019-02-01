@@ -1,5 +1,6 @@
 package io.github.laplacedemon.qthings.mqtt.handler;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -13,6 +14,7 @@ import io.github.laplacedemon.qthings.mqtt.etc.ConfigInstance;
 import io.github.laplacedemon.qthings.mqtt.protocal.common.ConnectAckType;
 import io.github.laplacedemon.qthings.mqtt.protocal.common.ControlPacketType;
 import io.github.laplacedemon.qthings.mqtt.protocal.common.QoS;
+import io.github.laplacedemon.qthings.mqtt.protocal.exception.MQTTDecodeException;
 import io.github.laplacedemon.qthings.mqtt.protocal.packet.ConnAckPacket;
 import io.github.laplacedemon.qthings.mqtt.protocal.packet.ConnectPacket;
 import io.github.laplacedemon.qthings.mqtt.protocal.packet.MQTTPacket;
@@ -22,7 +24,8 @@ import io.github.laplacedemon.qthings.mqtt.protocal.packet.PublishPacket;
 import io.github.laplacedemon.qthings.mqtt.protocal.packet.SubAckPacket;
 import io.github.laplacedemon.qthings.mqtt.protocal.packet.SubscribePacket;
 import io.github.laplacedemon.qthings.mqtt.protocal.packet.SubscribePacket.TopicFilter;
-import io.github.laplacedemon.qthings.mqtt.store.TopicStore;
+import io.github.laplacedemon.qthings.mqtt.store.MessagePersistentStorage;
+import io.github.laplacedemon.qthings.mqtt.store.TopicStorage;
 import io.github.laplacedemon.qthings.mqtt.topic.Session;
 import io.github.laplacedemon.qthings.mqtt.topic.SubscribeTreeManager;
 import io.github.laplacedemon.qthings.mqtt.topic.Subscriber;
@@ -38,12 +41,10 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 	private final static Logger LOGGER = LoggerFactory.getLogger(MQTTHandler.class);
 	private SubscribeTreeManager topicTreeManager;
 	private ClientIdSessionMapper clientIdSessionMapper;
-	private TopicStore topicStore;
 	
-	public MQTTHandler(ClientIdSessionMapper clientIdSessionMapper, SubscribeTreeManager topicTreeManager, TopicStore topicStore) {
+	public MQTTHandler(ClientIdSessionMapper clientIdSessionMapper, SubscribeTreeManager topicTreeManager) {
 		this.clientIdSessionMapper= clientIdSessionMapper;
 		this.topicTreeManager = topicTreeManager;
-		this.topicStore = topicStore;
 	}
 
 	@Override
@@ -53,7 +54,8 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 			
 			@Override
 			public void operationComplete(ChannelFuture future) throws Exception {
-				Session session = ChannelUtil.sessuibOnChannel(ctx.channel());
+				// will message
+				Session session = ChannelUtil.sessionOnChannel(ctx.channel());
 				if(session.isWillFlag()) {
 					WillMessage willMessage = session.getWillMessage();
 					PublishPacket publishPacket = new PublishPacket();
@@ -61,6 +63,7 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 					publishPacket.setRetain(willMessage.isRetain());
 					publishPacket.setPayload(willMessage.getPayload());
 					publishPacket.setQos(willMessage.getQos());
+					saveRetainMessage(publishPacket);
 					publish(publishPacket);
 				}
 			}
@@ -68,7 +71,7 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 	}
 
 	@Override
-	public void channelRead(final ChannelHandlerContext ctx,final Object msg) throws Exception {
+	public void channelRead(final ChannelHandlerContext ctx, final Object msg) throws Exception {
 		MQTTPacket mqttPacket = (MQTTPacket)msg;
 		ControlPacketType type = mqttPacket.getType();
 		switch (type) {
@@ -76,6 +79,7 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 			if(LOGGER.isDebugEnabled()) {
 				LOGGER.debug(mqttPacket.toString());
 			}
+			
 			ConnectPacket connectPacket = (ConnectPacket)mqttPacket;
 			
 			// authenticate
@@ -109,18 +113,26 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 			
 			// clientId
 			String clientIdentifier = connectPacket.getClientIdentifier();
-			if(clientIdentifier != null && clientIdentifier.length() > 0) {
-				if(clientIdentifier.length() > 23) {
-					ConnAckPacket connAckPacket = new ConnAckPacket();
-					connAckPacket.setConnectReturnCode(ConnectAckType.UnqualifiedClientIdentifier.getReturnCode());
-					ctx.writeAndFlush(connAckPacket);
-					break;
-				}
+			if (clientIdentifier == null || clientIdentifier.length() == 0) {
+				// clientIdentifier is empty.
+				ConnAckPacket connAckPacket = new ConnAckPacket();
+				connAckPacket.setConnectReturnCode(ConnectAckType.UnqualifiedClientIdentifier.getReturnCode());
+				ctx.writeAndFlush(connAckPacket).addListener(new ChannelFutureListener() {
+					
+					@Override
+					public void operationComplete(ChannelFuture future) throws Exception {
+						ChannelUtil.closeChannel(ctx.channel());
+					}
+				});
 				
-				clientIdentifier = ("#" + clientIdentifier);
-			} else {
-				Channel channel = ctx.channel();
-				clientIdentifier = ("!" + channel.id());
+				break;
+			}
+			
+			if(clientIdentifier.length() > 23) {
+				ConnAckPacket connAckPacket = new ConnAckPacket();
+				connAckPacket.setConnectReturnCode(ConnectAckType.UnqualifiedClientIdentifier.getReturnCode());
+				ctx.writeAndFlush(connAckPacket);
+				break;
 			}
 			
 			// will message
@@ -135,10 +147,27 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 				willMessage.setRetain(connectPacket.isWillRetina());
 			}
 			
-			Session session = new Session(ctx.channel(), willFlag, willMessage);
-			Session oldSession = this.clientIdSessionMapper.put(clientIdentifier, session);
-			if(oldSession != null) {
-				oldSession.close();
+			boolean cleanSession = connectPacket.isCleanSession();
+			Session session = this.clientIdSessionMapper.getSession(clientIdentifier);
+			if (session != null && !session.isCleanSession()) {
+				// persistent session
+				session.updateChannel(ctx.channel(), cleanSession, willFlag ,willMessage);
+				Channel channel = session.getChannel();
+				Subscriber subscriber = ChannelUtil.subscriberOnChannel(channel);
+				while (true) {
+					List<PublishPacket> msgList = MessagePersistentStorage.INS.query(clientIdentifier, 300);
+					// 发布离线消息
+					for(PublishPacket pp :msgList) {
+						subscriber.publish(pp);
+					}
+				}
+			} else {
+				// new session
+				Session newSession = new Session(ctx.channel(), clientIdentifier ,cleanSession, willFlag, willMessage);
+				Session oldSession = this.clientIdSessionMapper.put(clientIdentifier, newSession);
+				if(oldSession != null) {
+					oldSession.close();
+				}
 			}
 			
 			// keep alive
@@ -171,13 +200,7 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 				LOGGER.debug(publishPacket.toString());
 			}
 			
-			if(publishPacket.isRetain()) {
-				// 存储消息
-				topicStore.store(publishPacket.getTopicName(), publishPacket.getPayload(), publishPacket.getQos().getValue());
-				if(LOGGER.isDebugEnabled()) {
-					LOGGER.debug("save retain message");
-				}
-			}
+			saveRetainMessage(publishPacket);
 			
 			QoS qos = publishPacket.getQos();
 			if(qos == QoS.AtLeastOnce) {
@@ -230,7 +253,7 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 			// Retain Message
 			for(TopicFilter topicFilter : topicFilters) {
 				String filter = topicFilter.getFilter();
-				TopicMessage topicMessage = this.topicStore.load(filter);
+				TopicMessage topicMessage = TopicStorage.INS.load(filter);
 				if(topicMessage == null) {
 					continue ;
 				}
@@ -258,7 +281,7 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 			break;
 		}
 		default:
-			break;
+			throw new MQTTDecodeException();
 		}
 	}
 	
@@ -276,7 +299,17 @@ public class MQTTHandler extends ChannelInboundHandlerAdapter {
 			if(subscriber.isActive()) {
 				subscriber.publish(publishPacket);
 			} else {
-				subscriber.remove();
+				subscriber.removeFromSubscribeTree();
+			}
+		}
+	}
+	
+	private void saveRetainMessage(PublishPacket publishPacket) throws IOException {
+		if(publishPacket.isRetain()) {
+			// 存储消息
+			TopicStorage.INS.store(publishPacket.getTopicName(), publishPacket.getPayload(), publishPacket.getQos().getValue());
+			if(LOGGER.isDebugEnabled()) {
+				LOGGER.debug("save retain message");
 			}
 		}
 	}

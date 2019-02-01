@@ -3,6 +3,8 @@ package io.github.laplacedemon.qthings.mqtt.handler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.laplacedemon.qthings.mqtt.protocal.packet.PublishPacket;
+import io.github.laplacedemon.qthings.mqtt.store.MessagePersistentStorage;
 import io.github.laplacedemon.qthings.mqtt.topic.Session;
 import io.github.laplacedemon.qthings.mqtt.topic.Subscriber;
 import io.netty.channel.Channel;
@@ -21,7 +23,7 @@ public class ChannelUtil {
 		return subscriberOnChannel(ctx.channel());
 	}
 	
-	public static Session sessuibOnChannel(Channel channel) {
+	public static Session sessionOnChannel(Channel channel) {
 		Attribute<Session> attr = channel.attr(SESSION_CHANNEL_KEY);
 		Session session = attr.get();
 		return session;
@@ -34,18 +36,34 @@ public class ChannelUtil {
 	}
 	
 	public static ChannelFuture closeChannel(Channel channel) {
-		Subscriber subscriber = subscriberOnChannel(channel);
-		if(subscriber != null) {
-			subscriber.remove();
-		}
+		final Subscriber subscriber = subscriberOnChannel(channel);
+		final Session session = sessionOnChannel(channel);
 		
 		ChannelFuture channelFuture = channel.close().addListener(new ChannelFutureListener() {
 			
 			@Override
 			public void operationComplete(ChannelFuture future) throws Exception {
-				LOGGER.info("{} has been closed", channel.remoteAddress() );
+				LOGGER.info("{} has been closed", channel.remoteAddress());
+				
+				if(session.isCleanSession()) {
+					session.clean();
+					if(subscriber != null) {
+						subscriber.removeFromSubscribeTree();
+					}
+				} else {
+					// 持久化session
+					if(subscriber != null) {
+						while(true) {
+							PublishPacket msg = subscriber.poll();
+							if(msg == null) {
+								break;
+							}
+							
+							MessagePersistentStorage.INS.save(session.getClientId(), msg.getPacketSeq(), msg);
+						}
+					}
+				}
 			}
-			
 		});
 		
 		return channelFuture;

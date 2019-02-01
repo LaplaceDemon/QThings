@@ -3,7 +3,7 @@
 Features：
 
 - Unique client Id ✔
-- Clean session
+- Clean Session/Persistent Session
 - Authenticate  ✔
 - Keep alive  ✔
 - QoS = 0  ✔
@@ -12,6 +12,6 @@ Features：
 - Retina Message  ✔
 - Will Message  ✔
 - Topic filter support '#'
-- Topic filter support '!'
+- Topic filter support '+'
 - SSL/TLS
 

@@ -8,7 +8,6 @@ public class RemainingLengthUtil {
 	public final static int MIN_VALUE = 0;
 	public final static int MAX_VALUE = 268435455;
 
-
 	public static int decode(byte... bs) {
 		if(bs.length == 1) {
 			return bs[0];
@@ -21,6 +20,20 @@ public class RemainingLengthUtil {
 		}
 		
 		throw new MQTTDecodeException();
+	}
+	
+	public static int encodeSize(int length) {
+		if(length >= 0 && length <= 127) {
+			return 1;
+		} else if (length >= 128 && length <= 16383) {
+			return 2;
+		} else if (length >= 16384 && length <= 2097151) {
+			return 3;
+		} else if (length >= 2097152 && length <= 268435455) {
+			return 4;
+		}
+		
+		throw new MQTTEncodeException();
 	}
 	
 	public static byte[] encode(int length) {

@@ -10,7 +10,6 @@ import io.github.laplacedemon.qthings.mqtt.handler.ClientIdSessionMapper;
 import io.github.laplacedemon.qthings.mqtt.handler.MQTTDecoder;
 import io.github.laplacedemon.qthings.mqtt.handler.MQTTEncoder;
 import io.github.laplacedemon.qthings.mqtt.handler.MQTTHandler;
-import io.github.laplacedemon.qthings.mqtt.store.TopicStore;
 import io.github.laplacedemon.qthings.mqtt.topic.SubscribeTreeManager;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
@@ -32,7 +31,7 @@ public class MQTTServer {
 		final EventLoopGroup workGroup = new NioEventLoopGroup();
 		final SubscribeTreeManager topicTreeManager = new SubscribeTreeManager();
 		final ClientIdSessionMapper clientIdSessionMapper = new ClientIdSessionMapper();
-		final TopicStore topicStore = new TopicStore("data");
+		
 		try {
 			ServerBootstrap bootstrap = new ServerBootstrap();
 			bootstrap.group(bossGroup, workGroup)
@@ -46,19 +45,20 @@ public class MQTTServer {
 						ch.pipeline()
 						.addLast(new MQTTDecoder())
 						.addLast(new MQTTEncoder())
-						.addLast(new MQTTHandler(clientIdSessionMapper, topicTreeManager, topicStore));
+						.addLast(new MQTTHandler(clientIdSessionMapper, topicTreeManager));
 					}
 				});
 
-			int port = ConfigInstance.INS.getServer().getPort();
+			final int port = ConfigInstance.INS.getServer().getPort();
 			ChannelFuture f = bootstrap.bind(port).addListener(new ChannelFutureListener() {
 
 				@Override
 				public void operationComplete(ChannelFuture future) throws Exception {
-					LOGGER.info("mqtt server is running...");
+					LOGGER.info("mqtt server is running. server port is {}", port);
 				}
 				
 			}).sync();
+			
 			f.channel().closeFuture().sync();
 		} finally {
 			bossGroup.shutdownGracefully();

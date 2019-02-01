@@ -15,4 +15,12 @@ public class ClientIdSessionMapper {
 		Session oldSession = this.map.put(clientId, session);
 		return oldSession;
 	}
+	
+	public void remove(String clientId) {
+		this.map.remove(clientId);
+	}
+
+	public Session getSession(String clientIdentifier) {
+		return this.map.get(clientIdentifier);
+	}
 }

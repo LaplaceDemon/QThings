@@ -11,3 +11,4 @@ authenticate:
 server:
     port: 9999
     publishTimeout: 10000
+    dataPath: data

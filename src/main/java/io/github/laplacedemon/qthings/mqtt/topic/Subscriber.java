@@ -3,10 +3,12 @@ package io.github.laplacedemon.qthings.mqtt.topic;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.github.laplacedemon.qthings.mqtt.handler.ChannelUtil;
 import io.github.laplacedemon.qthings.mqtt.protocal.packet.PubAckPacket;
 import io.github.laplacedemon.qthings.mqtt.protocal.packet.PublishPacket;
+import io.github.laplacedemon.qthings.mqtt.store.MessagePersistentStorage;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.util.Attribute;
 import io.netty.util.concurrent.ScheduledFuture;
@@ -14,6 +16,7 @@ import io.netty.util.concurrent.ScheduledFuture;
 public class Subscriber implements Comparable<Subscriber> {
 	private AtomicUnsignedShort publishSeqId;
 	private ArrayBlockingQueue<PublishPacket> queue;
+	private AtomicBoolean online;
 	private int qos;
 	private ChannelHandlerContext ctx;
 	private String topicFilter;
@@ -22,6 +25,7 @@ public class Subscriber implements Comparable<Subscriber> {
 	
 	public Subscriber(ChannelHandlerContext ctx, int qos, String topicFilter) {
 		super();
+		this.online = new AtomicBoolean(true);
 		this.publishSeqId = new AtomicUnsignedShort(0);
 		this.queue = new ArrayBlockingQueue<>(100000);
 		this.qos = qos;
@@ -69,11 +73,21 @@ public class Subscriber implements Comparable<Subscriber> {
 	}
 	
 	public void publish(final PublishPacket msg) {
-		msg.setPacketSeq(publishSeqId.incrementAndGet());
-		int size = this.queue.size();
-		boolean add = this.queue.add(msg);
-		if(add && size == 0) {
-			writeAndFlush(msg);
+		int msgSeqId = publishSeqId.incrementAndGet();
+		msg.setPacketSeq(msgSeqId);
+		if (ctx.channel().isActive()) {
+			int size = this.queue.size();
+			boolean add = this.queue.add(msg);
+			if(add && size == 0) {
+				writeAndFlush(msg);
+				return ;
+			}
+		}
+		
+		// channel 不在线，若session不需要clean，则持久化消息。
+		Session session = ChannelUtil.sessionOnChannel(ctx.channel());
+		if (!session.isCleanSession()) {
+			MessagePersistentStorage.INS.save(session.getClientId(), msgSeqId, msg);
 		}
 	}
 
@@ -81,7 +95,7 @@ public class Subscriber implements Comparable<Subscriber> {
 		return topicFilter;
 	}
 
-	public void remove() {
+	public void removeFromSubscribeTree() {
 		if(topicTreeRoot != null) {
 			this.topicTreeRoot.remove(this);
 		}
@@ -109,5 +123,17 @@ public class Subscriber implements Comparable<Subscriber> {
 				this.writeAndFlush(lastPacket);
 			}
 		}
+	}
+	
+	public boolean offline() {
+		return this.online.compareAndSet(true, false);
+	}
+	
+	public boolean online() {
+		return this.online.compareAndSet(false, true);
+	}
+
+	public PublishPacket poll() {
+		return this.queue.poll();
 	}
 }

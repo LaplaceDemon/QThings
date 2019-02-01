@@ -1,25 +1,23 @@
 package io.github.laplacedemon.qthings.mqtt.store;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 
 import org.iq80.leveldb.DB;
-import org.iq80.leveldb.DBFactory;
-import org.iq80.leveldb.Options;
-import org.iq80.leveldb.impl.Iq80DBFactory;
 
 import io.github.laplacedemon.qthings.mqtt.topic.TopicMessage;
 
-public class TopicStore {
+public class TopicStorage {
+	public static TopicStorage INS;
+	static {
+		INS = new TopicStorage();
+	}
+	
 	private DB db;
 	
-	public TopicStore(String dirPath) throws IOException {
-		DBFactory factory = new Iq80DBFactory();
-		Options options = new Options();
-		options.createIfMissing(true);
-		this.db = factory.open(new File(dirPath), options);
+	private TopicStorage() {
+		this.db = LevelDB.INS;
 	}
 	
 	public void store(String topic, byte[] payload, byte qos) throws IOException {

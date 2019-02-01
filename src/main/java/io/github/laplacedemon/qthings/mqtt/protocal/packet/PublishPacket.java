@@ -85,14 +85,19 @@ public class PublishPacket extends MQTTPacket implements ReadablePacket,Writable
 		output.writeByte(headByte);
 		int packetLength = 2 + this.topicName.length() + 2 + this.payload.length;
 		output.writeBytes(RemainingLengthUtil.encode(packetLength));
-		output.writeShort(this.topicName.length());
-		output.writeBytes(this.topicName.getBytes());
-		output.writeShort(this.packetSeq);
-		output.writeBytes(this.payload);
+		output.writeShort(this.topicName.length()); // 2
+		output.writeBytes(this.topicName.getBytes()); // length
+		output.writeShort(this.packetSeq); // 2
+		output.writeBytes(this.payload); // length
 	}
 
 	public void setPacketSeq(int packetSeq) {
 		this.packetSeq = packetSeq;
+	}
+	
+	public int packetBufferSize() {
+		int packetLength = 2 + this.topicName.length() + 2 + this.payload.length;
+		return 1 + RemainingLengthUtil.encodeSize(packetLength) + packetLength;
 	}
 
 	@Override
@@ -107,7 +112,7 @@ public class PublishPacket extends MQTTPacket implements ReadablePacket,Writable
 		
 		return publishPacket;
 	}
-
+	
 	public void setQos(QoS qos) {
 		this.qos = qos;
 	}
@@ -123,5 +128,5 @@ public class PublishPacket extends MQTTPacket implements ReadablePacket,Writable
 	public void setPayload(byte[] payload) {
 		this.payload = payload;
 	}
-	
+
 }
